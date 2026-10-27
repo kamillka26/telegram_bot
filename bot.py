@@ -28,6 +28,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=ForceReply(selective=True),
     )
 
+async def affirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Получает случайную аффирмацию из внешнего API."""
+    session = context.bot_data['aiohttp_session']
+    try:
+        async with session.get('https://www.affirmations.dev/') as response:
+            response.raise_for_status()
+            data = await response.json()
+            affirmation_text = data['affirmation']
+
+            await update.message.reply_text(affirmation_text)
+
+    except aiohttp.ClientError as e:
+        print(f"Ошибка при запросе к API: {e}")
+        await update.message.reply_text("Не удалось получить аффирмацию. Попробуйте позже.")
+    except KeyError:
+        await update.message.reply_text("Что-то пошло не так с форматом ответа. Попробуйте ещё раз.")
+
+async def post_init(application: Application) -> None:
+    """Создаём сессию для HTTP-запросов при старте бота."""
+    application.bot_data['aiohttp_session'] = aiohttp.ClientSession()
+
+
+async def post_shutdown(application: Application) -> None:
+    """Закрываем сессию при выключении бота."""
+    await application.bot_data['aiohttp_session'].close()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
@@ -42,9 +67,16 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def main() -> None:
     """Start the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
 
     # on different commands - answer in Telegram
+    application.add_handler(CommandHandler("affirmation", affirmation))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
